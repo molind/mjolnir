@@ -105,6 +105,50 @@ uint32_t GetOpposingEdgeIndex(const GraphId& startnode, DirectedEdge& edge,
   return opp_index;
 }
 
+bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& lock,
+                const GraphId& startnode,
+                NodeInfoBuilder& startnodeinfo,
+                const uint32_t idx) {
+  std::vector<uint64_t> ids;
+
+  bool is_terminal = true;
+  bool has_pedestrian = false;
+  lock.lock();
+  const GraphTile* tile = reader.GetGraphTile(startnode);
+  lock.unlock();
+  const DirectedEdge* diredge = tile->directededge(startnodeinfo.edge_index());
+  for (uint32_t i = 0; i < startnodeinfo.edge_count(); i++, diredge++) {
+
+    if (i == idx)
+      continue;
+
+    if (!(diredge->reverseaccess() & kAutoAccess) &&
+        !(diredge->forwardaccess() & kAutoAccess)) {
+      has_pedestrian = true;
+      continue;
+    }
+
+    //we can get there.
+    if (((diredge->reverseaccess() & kAutoAccess) &&
+        (diredge->forwardaccess() & kAutoAccess)) ||
+        ((diredge->reverseaccess() & kAutoAccess) &&
+            !(diredge->forwardaccess() & kAutoAccess))) {
+      is_terminal = false;
+      break;
+    }
+
+    ids.push_back(tilebuilder.edgeinfo(diredge->edgeinfo_offset())->wayid());
+  }
+
+  if (is_terminal && has_pedestrian) {
+    for (auto id : ids) {
+      std::cout << id << std::endl;
+    }
+  }
+
+  return true;
+}
+
 void validate(const boost::property_tree::ptree& hierarchy_properties,
               std::queue<GraphId>& tilequeue, std::mutex& lock,
               std::promise<validator_stats>& result) {
@@ -201,6 +245,11 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
 
           // Only consider edge if edge is good and it's not a link
           if (validLength && !directededge.link()) {
+
+            //if (!(directededge.reverseaccess() & kAutoAccess) &&
+            //    !(directededge.forwardaccess() & kAutoAccess))
+            //IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,idx);
+
             auto rclass = directededge.classification();
             tempLength /= (tileid == directededge.endnode().tileid()) ? 2 : 4;
             //Determine access for directed edge
@@ -208,6 +257,9 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
             auto bward = ((kAutoAccess & directededge.reverseaccess()) == kAutoAccess);
             // Check if one way
             if ((!fward || !bward) && (fward || bward)) {
+
+              IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,idx);
+
               vStats.add_tile_one_way(tileid, rclass, tempLength);
               vStats.add_country_one_way(begin_node_iso, rclass, tempLength);
             }
