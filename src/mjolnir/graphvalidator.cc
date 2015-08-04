@@ -122,8 +122,10 @@ bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& 
     if (i == idx)
       continue;
 
-    if (!(diredge->reverseaccess() & kAutoAccess) &&
-        !(diredge->forwardaccess() & kAutoAccess)) {
+    if (((diredge->reverseaccess() & kPedestrianAccess) ||
+         (diredge->forwardaccess() & kPedestrianAccess)) &&
+        (!(diredge->forwardaccess() & kAutoAccess) &&
+         !(diredge->reverseaccess() & kAutoAccess))){
       has_pedestrian = true;
       continue;
     }
