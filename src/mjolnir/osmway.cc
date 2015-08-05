@@ -201,102 +201,102 @@ uint32_t OSMWay::bike_local_ref_index() const {
 
 // Set auto forward flag.
 void OSMWay::set_auto_forward(const bool auto_forward) {
-  access_.fields.auto_forward = auto_forward;
+  classification_access_.fields.auto_forward = auto_forward;
 }
 
 // Get the auto forward flag.
 bool OSMWay::auto_forward() const {
-  return access_.fields.auto_forward;
+  return classification_access_.fields.auto_forward;
 }
 
 // Set bus forward flag.
 void OSMWay::set_bus_forward(const bool bus_forward) {
-  access_.fields.bus_forward = bus_forward;
+  classification_access_.fields.bus_forward = bus_forward;
 }
 
 // Get the bus forward flag.
 bool OSMWay::bus_forward() const {
-  return access_.fields.bus_forward;
+  return classification_access_.fields.bus_forward;
 }
 
 // Set taxi forward flag.
 void OSMWay::set_taxi_forward(const bool taxi_forward) {
-  access_.fields.taxi_forward = taxi_forward;
+  classification_access_.fields.taxi_forward = taxi_forward;
 }
 
 // Get the taxi forward flag.
 bool OSMWay::taxi_forward() const {
-  return access_.fields.taxi_forward;
+  return classification_access_.fields.taxi_forward;
 }
 
 // Set truck forward flag.
 void OSMWay::set_truck_forward(const bool truck_forward) {
-  access_.fields.truck_forward = truck_forward;
+  classification_access_.fields.truck_forward = truck_forward;
 }
 
 // Get the truck forward flag.
 bool OSMWay::truck_forward() const {
-  return access_.fields.auto_forward;
+  return classification_access_.fields.auto_forward;
 }
 
 // Set bike forward flag.
 void OSMWay::set_bike_forward(const bool bike_forward) {
-  access_.fields.bike_forward = bike_forward;
+  classification_access_.fields.bike_forward = bike_forward;
 }
 
 // Get the bike forward flag.
 bool OSMWay::bike_forward() const {
-  return access_.fields.bike_forward;
+  return classification_access_.fields.bike_forward;
 }
 
 // Set auto backward flag.
 void OSMWay::set_auto_backward(const bool auto_backward) {
-  access_.fields.auto_backward = auto_backward;
+  classification_access_.fields.auto_backward = auto_backward;
 }
 
 // Get the auto backward flag.
 bool OSMWay::auto_backward() const {
-  return access_.fields.auto_backward;
+  return classification_access_.fields.auto_backward;
 }
 
 // Set bus backward flag.
 void OSMWay::set_bus_backward(const bool bus_backward) {
-  access_.fields.bus_backward = bus_backward;
+  classification_access_.fields.bus_backward = bus_backward;
 }
 
 // Get the bus backward flag.
 bool OSMWay::bus_backward() const {
-  return access_.fields.bus_backward;
+  return classification_access_.fields.bus_backward;
 }
 
 // Set taxi backward flag.
 void OSMWay::set_taxi_backward(const bool taxi_backward) {
-  access_.fields.taxi_backward = taxi_backward;
+  classification_access_.fields.taxi_backward = taxi_backward;
 }
 
 // Get the taxi backward flag.
 bool OSMWay::taxi_backward() const {
-  return access_.fields.taxi_backward;
+  return classification_access_.fields.taxi_backward;
 }
 
 // Set truck backward flag.
 void OSMWay::set_truck_backward(const bool truck_backward) {
-  access_.fields.truck_backward = truck_backward;
+  classification_access_.fields.truck_backward = truck_backward;
 }
 
 // Get the truck backward flag.
 bool OSMWay::truck_backward() const {
-  return access_.fields.truck_backward;
+  return classification_access_.fields.truck_backward;
 }
 
 // Set bike backward flag.
 void OSMWay::set_bike_backward(const bool bike_backward) {
-  access_.fields.bike_backward = bike_backward;
+  classification_access_.fields.bike_backward = bike_backward;
 }
 
 // Get the bike backward flag.
 bool OSMWay::bike_backward() const {
-  return access_.fields.bike_backward;
+  return classification_access_.fields.bike_backward;
 }
 
 // Set destination only/private flag.
@@ -311,12 +311,12 @@ bool OSMWay::destination_only() const {
 
 // Set pedestrian flag.
 void OSMWay::set_pedestrian(const bool pedestrian) {
-  access_.fields.pedestrian = pedestrian;
+  classification_access_.fields.pedestrian = pedestrian;
 }
 
 // Get the pedestrian flag.
 bool OSMWay::pedestrian() const {
-  return access_.fields.pedestrian;
+  return classification_access_.fields.pedestrian;
 }
 
 // Set no thru traffic flag.
@@ -491,32 +491,32 @@ bool  OSMWay::tagged_speed() const {
 
 // Get the road class.
 RoadClass OSMWay::road_class() const {
-  return static_cast<RoadClass>(classification_.fields.road_class);
+  return static_cast<RoadClass>(classification_access_.fields.road_class);
 }
 
 // Set the road class.
 void OSMWay::set_road_class(const RoadClass roadclass) {
-  classification_.fields.road_class = static_cast<uint8_t>(roadclass);
+  classification_access_.fields.road_class = static_cast<uint8_t>(roadclass);
 }
 
 // Set the use.
 void OSMWay::set_use(const Use use) {
-  classification_.fields.use = static_cast<uint8_t>(use);
+  classification_access_.fields.use = static_cast<uint8_t>(use);
 }
 
 // Get the use.
 Use OSMWay::use() const {
-  return static_cast<Use>(classification_.fields.use);
+  return static_cast<Use>(classification_access_.fields.use);
 }
 
 // Set link flag.
 void OSMWay::set_link(const bool link) {
-  classification_.fields.link = link;
+  classification_access_.fields.link = link;
 }
 
 // Get the link flag.
 bool OSMWay::link() const {
-  return classification_.fields.link;
+  return classification_access_.fields.link;
 }
 
 // Get the names for the edge info based on the road class.
@@ -526,8 +526,8 @@ std::vector<std::string> OSMWay::GetNames(const std::string& ref,
   std::vector<std::string> names;
   // Process motorway and trunk refs
   if ((ref_index_ != 0 || !ref.empty())
-      && ((static_cast<RoadClass>(classification_.fields.road_class) == RoadClass::kMotorway)
-          || (static_cast<RoadClass>(classification_.fields.road_class) == RoadClass::kTrunk))) {
+      && ((static_cast<RoadClass>(classification_access_.fields.road_class) == RoadClass::kMotorway)
+          || (static_cast<RoadClass>(classification_access_.fields.road_class) == RoadClass::kTrunk))) {
     std::vector<std::string> tokens;
 
     if (!ref.empty())
@@ -545,8 +545,8 @@ std::vector<std::string> OSMWay::GetNames(const std::string& ref,
     names.emplace_back(name_offset_map.name(name_index_));
 
   // Process non limited access refs
-  if (ref_index_ != 0 && (static_cast<RoadClass>(classification_.fields.road_class) != RoadClass::kMotorway)
-      && (static_cast<RoadClass>(classification_.fields.road_class) != RoadClass::kTrunk)) {
+  if (ref_index_ != 0 && (static_cast<RoadClass>(classification_access_.fields.road_class) != RoadClass::kMotorway)
+      && (static_cast<RoadClass>(classification_access_.fields.road_class) != RoadClass::kTrunk)) {
     std::vector<std::string> tokens;
     if (!ref.empty())
       tokens = GetTagTokens(ref);// use updated refs from relations.

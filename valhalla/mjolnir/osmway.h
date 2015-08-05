@@ -678,36 +678,27 @@ struct OSMWay {
   };
   WayAttributes attributes_;
 
-  union Classification {
+  union ClassificationAccess {
     struct Fields {
       uint32_t road_class        :3;     // Importance of the road/path
       uint32_t link              :1;     // *link tag - Ramp or turn channel
       uint32_t use               :6;     // Use / form
-      uint32_t spare             :22;    // Use / form
+      uint32_t auto_forward      :1;
+      uint32_t bus_forward       :1;
+      uint32_t taxi_forward      :1;
+      uint32_t truck_forward     :1;
+      uint32_t bike_forward      :1;
+      uint32_t auto_backward     :1;
+      uint32_t bus_backward      :1;
+      uint32_t taxi_backward     :1;
+      uint32_t truck_backward    :1;
+      uint32_t bike_backward     :1;
+      uint32_t pedestrian        :1;
+      uint32_t spare             :11;
     } fields;
     uint32_t v;
   };
-  Classification classification_;
-
-  // Access
-  union WayAccess {
-    struct Fields {
-      uint16_t auto_forward     :1;
-      uint16_t bus_forward      :1;
-      uint16_t taxi_forward     :1;
-      uint16_t truck_forward    :1;
-      uint16_t bike_forward     :1;
-      uint16_t auto_backward    :1;
-      uint16_t bus_backward     :1;
-      uint16_t taxi_backward    :1;
-      uint16_t truck_backward   :1;
-      uint16_t bike_backward    :1;
-      uint16_t pedestrian       :1;
-      uint16_t spare            :5;
-    } fields;
-    uint16_t v;
-  };
-  WayAccess access_;
+  ClassificationAccess classification_access_;
 
   uint16_t nodecount_;
 
