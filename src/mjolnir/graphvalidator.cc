@@ -109,11 +109,11 @@ uint32_t GetOpposingEdgeIndex(const GraphId& startnode, DirectedEdge& edge,
 bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& lock,
                 const GraphId& startnode,
                 NodeInfoBuilder& startnodeinfo,
+                DirectedEdgeBuilder& directededge,
                 const uint32_t idx) {
   std::vector<uint64_t> ids;
 
   bool is_terminal = true;
-  bool has_pedestrian = false;
   lock.lock();
   const GraphTile* tile = reader.GetGraphTile(startnode);
   lock.unlock();
@@ -124,29 +124,21 @@ bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& 
       continue;
 
     if (((diredge->reverseaccess() & kPedestrianAccess) ||
-         (diredge->forwardaccess() & kPedestrianAccess)) &&
+        (diredge->forwardaccess() & kPedestrianAccess)) &&
         (!(diredge->forwardaccess() & kAutoAccess) &&
-         !(diredge->reverseaccess() & kAutoAccess))){
-      has_pedestrian = true;
+          !(diredge->reverseaccess() & kAutoAccess))){
       continue;
     }
-
-    //we can get there.
-    if (((diredge->reverseaccess() & kAutoAccess) &&
-        (diredge->forwardaccess() & kAutoAccess)) ||
-        ((diredge->reverseaccess() & kAutoAccess) &&
-            !(diredge->forwardaccess() & kAutoAccess))) {
+    else {
       is_terminal = false;
       break;
     }
-
-    ids.push_back(tilebuilder.edgeinfo(diredge->edgeinfo_offset())->wayid());
   }
 
-  if (is_terminal && has_pedestrian) {
-    for (auto id : ids) {
-      std::cout << id << std::endl;
-    }
+  if (is_terminal) {
+    if (startnodeinfo.edge_count() > 1)
+      std::cout <<  "Oneway with all pedstrian edges:  Origin or Destination not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
+    //else  std::cout <<  "Oneway with no connecting edges:  Dest not allowed." << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
   }
 
   return true;
@@ -261,7 +253,7 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
             // Check if one way
             if ((!fward || !bward) && (fward || bward)) {
 
-              IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,idx);
+              IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge,j);
 
               vStats.add_tile_one_way(tileid, rclass, tempLength);
               vStats.add_country_one_way(begin_node_iso, rclass, tempLength);
