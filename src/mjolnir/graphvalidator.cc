@@ -137,10 +137,10 @@ bool IsPedestrianTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, st
     if (startnodeinfo.edge_count() > 1) {
       std::cout <<  "Oneway with all pedstrian edges:  Origin or Destination not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
       //else  std::cout <<  "Oneway with no connecting edges:  Dest not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
+      return true;
     }
   }
-
-  return true;
+  return false;
 }
 
 bool IsLoopTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& lock,
@@ -148,7 +148,6 @@ bool IsLoopTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mut
                 NodeInfoBuilder& startnodeinfo,
                 DirectedEdgeBuilder& directededge) {
 
-  bool is_terminal = true;
   lock.lock();
   const GraphTile* tile = reader.GetGraphTile(startnode);
   lock.unlock();
@@ -164,17 +163,72 @@ bool IsLoopTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mut
       outbound++;
 
     if ((!(diredge->forwardaccess() & kAutoAccess) &&
-        (diredge->reverseaccess() & kAutoAccess))         ||
+        (diredge->reverseaccess() & kAutoAccess)) ||
         ((diredge->forwardaccess() & kAutoAccess) &&
          (diredge->reverseaccess() & kAutoAccess)))
       inbound++;
   }
 
-  if (outbound >= 2 && inbound == 0)
+  if ((outbound >= 2 && inbound == 0) || (inbound >= 2 && outbound == 0)) {
     std::cout <<  "Loop  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
-
-  return true;
+    return true;
+  }
+  return false;
 }
+
+bool IsReversedOneway(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& lock,
+                const GraphId& startnode,
+                NodeInfoBuilder& startnodeinfo,
+                DirectedEdgeBuilder& directededge) {
+
+  lock.lock();
+  const GraphTile* tile = reader.GetGraphTile(startnode);
+  lock.unlock();
+  const DirectedEdge* diredge = tile->directededge(startnodeinfo.edge_index());
+  uint32_t inbound = 0, outbound = 0;
+
+  for (uint32_t i = 0; i < startnodeinfo.edge_count(); i++, diredge++) {
+
+    if ((diredge->forwardaccess() & kAutoAccess) &&
+        !(diredge->reverseaccess() & kAutoAccess))
+      outbound++;
+
+    if (!(diredge->forwardaccess() & kAutoAccess) &&
+        (diredge->reverseaccess() & kAutoAccess))
+      inbound++;
+  }
+
+  if (!outbound && inbound)
+  {
+    const GraphId endnode = directededge.endnode();
+    lock.lock();
+    const GraphTile* tile = reader.GetGraphTile(endnode);
+    lock.unlock();
+    const NodeInfo* nodeinfo = tile->node(endnode.id());
+
+    const DirectedEdge* diredge = tile->directededge(nodeinfo->edge_index());
+    uint32_t inbound = 0, outbound = 0;
+
+    for (uint32_t i = 0; i < nodeinfo->edge_count(); i++, diredge++) {
+
+      if ((diredge->forwardaccess() & kAutoAccess) &&
+          !(diredge->reverseaccess() & kAutoAccess))
+        outbound++;
+
+      if (!(diredge->forwardaccess() & kAutoAccess) &&
+          (diredge->reverseaccess() & kAutoAccess))
+        inbound++;
+    }
+
+    if (!outbound && inbound) {
+      std::cout <<  "ReversedOneway  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 
 
 void validate(const boost::property_tree::ptree& hierarchy_properties,
@@ -282,16 +336,20 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
             // Check if one way
             if ((!fward || !bward) && (fward || bward)) {
 
-              IsPedestrianTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge,j);
+              bool found = IsPedestrianTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge,j);
 
-              if (directededge.endnode().id() == node.id()) {
+              if (!found && directededge.endnode().id() == node.id()) {
 
                 lock.lock();
                 const GraphTile* end_tile = graph_reader.GetGraphTile(directededge.endnode());
                 lock.unlock();
 
                 if (tile->id() == end_tile->id())
-                  IsLoopTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge);
+                  found = IsLoopTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge);
+              }
+
+              if (!found && directededge.endnode().id() != node.id()) {
+                found = IsReversedOneway(tilebuilder,graph_reader,lock,node,nodeinfo,directededge);
               }
 
               vStats.add_tile_one_way(tileid, rclass, tempLength);
