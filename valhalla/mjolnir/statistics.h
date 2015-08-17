@@ -69,7 +69,6 @@ class validator_stats {
   std::vector<std::vector<uint32_t> > dupcounts;
   std::vector<std::vector<float> > densities;
 
-
 public:
 
   validator_stats ();
@@ -141,6 +140,27 @@ public:
   void add (const validator_stats& stats);
 
   void build_db(const boost::property_tree::ptree& pt);
+
+  class RouletteData {
+    std::unordered_map<uint64_t, PointLL> node_locs;
+    std::unordered_map<uint64_t, std::vector<PointLL> > way_shapes;
+    std::set<uint64_t> way_IDs;
+
+  public:
+    RouletteData ();
+
+    void AddTask (const PointLL& p, const uint64_t id, const std::vector<PointLL>& shape);
+
+    const std::unordered_map<uint64_t, PointLL> GetNodeLocs () const;
+
+    const std::unordered_map<uint64_t, std::vector<PointLL> > GetWayShapes () const;
+
+    const std::set<uint64_t> GetWays () const;
+
+    void Add (const RouletteData& rd);
+
+    void GenerateTasks ();
+  } roulette_data;
 };
 }
 }

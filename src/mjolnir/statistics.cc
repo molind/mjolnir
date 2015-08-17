@@ -11,6 +11,7 @@
 #include <spatialite.h>
 #include <sstream>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <map>
@@ -179,7 +180,7 @@ void validator_stats::add (const validator_stats& stats) {
     }
     level++;
   }
-
+  roulette_data.Add(stats.roulette_data);
 }
 
 void validator_stats::build_db(const boost::property_tree::ptree& pt) {
@@ -192,6 +193,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     boost::filesystem::remove(database);
   }
 
+	//spatialite_initialize();
   spatialite_init(0);
 
   sqlite3 *db_handle;
@@ -210,8 +212,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
 
   // loading SpatiaLite as an extension
   sqlite3_enable_load_extension(db_handle, 1);
-  sql = "SELECT load_extension('libspatialite.so')";
-  ret = sqlite3_exec(db_handle, sql.c_str(), NULL, NULL, &err_msg);
+  ret = sqlite3_load_extension(db_handle, "libspatialite.so", NULL, &err_msg);
   if (ret != SQLITE_OK) {
     LOG_ERROR("load_extension() error: " + std::string(err_msg));
     sqlite3_free(err_msg);
@@ -235,13 +236,13 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   sql += "tilearea REAL,";
   sql += "totalroadlen REAL,";
   sql += "motorway REAL,";
-  sql += "pmary REAL,";
-  sql += "residential REAL,";
-  sql += "secondary REAL,";
-  sql += "serviceother REAL,";
-  sql += "tertiary REAL,";
   sql += "trunk REAL,";
-  sql += "unclassified REAL";
+  sql += "pmary REAL,";
+  sql += "secondary REAL,";
+  sql += "tertiary REAL,";
+  sql += "unclassified REAL,";
+  sql += "residential REAL,";
+  sql += "serviceother REAL";
   sql += ")";
   ret = sqlite3_exec(db_handle, sql.c_str(), NULL, NULL, &err_msg);
   if (ret != SQLITE_OK) {
@@ -282,13 +283,13 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   sql = "CREATE TABLE countrydata (";
   sql += "isocode TEXT PRIMARY KEY,";
   sql += "motorway REAL,";
-  sql += "pmary REAL,";
-  sql += "residential REAL,";
-  sql += "secondary REAL,";
-  sql += "serviceother REAL,";
-  sql += "tertiary REAL,";
   sql += "trunk REAL,";
-  sql += "unclassified REAL";
+  sql += "pmary REAL,";
+  sql += "secondary REAL,";
+  sql += "tertiary REAL,";
+  sql += "unclassified REAL,";
+  sql += "residential REAL,";
+  sql += "serviceother REAL";
   sql += ")";
   ret = sqlite3_exec(db_handle, sql.c_str(), NULL, NULL, &err_msg);
   if (ret != SQLITE_OK) {
@@ -324,7 +325,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     sqlite3_close(db_handle);
     return;
   }
-  sql = "INSERT INTO tiledata (tileid, tilearea, totalroadlen, motorway, pmary, residential, secondary, serviceother, tertiary, trunk, unclassified, geom) ";
+  sql = "INSERT INTO tiledata (tileid, tilearea, totalroadlen, motorway, trunk, pmary, secondary, tertiary, unclassified, residential, serviceother, geom) ";
   sql += "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 4326))";
   ret = sqlite3_prepare_v2(db_handle, sql.c_str(), strlen (sql.c_str()), &stmt, NULL);
   if (ret != SQLITE_OK) {
@@ -456,7 +457,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     sqlite3_close(db_handle);
     return;
   }
-  sql = "INSERT INTO countrydata (isocode, motorway, pmary, residential, secondary, serviceother, tertiary, trunk, unclassified) ";
+  sql = "INSERT INTO countrydata (isocode, motorway, trunk, pmary, secondary, tertiary, unclassified, residential, serviceother) ";
   sql += "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
   ret = sqlite3_prepare_v2(db_handle, sql.c_str(), sql.length(), &stmt, NULL);
   if (ret != SQLITE_OK) {
@@ -574,7 +575,64 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     return;
   }
   sqlite3_close(db_handle);
+	//spatialite_shutdown();
   LOG_INFO("Done writing statistics DB.");
+}
+
+validator_stats::RouletteData::RouletteData ()
+  : node_locs(), way_IDs(), way_shapes() { }
+
+void validator_stats::RouletteData::AddTask (const PointLL& p, const uint64_t id, const std::vector<PointLL>& shape) {
+  auto result = way_IDs.insert(id);
+  if (result.second)
+    node_locs.insert({id, p});
+    way_shapes.insert({id, shape});
+}
+
+const std::unordered_map<uint64_t, PointLL> validator_stats::RouletteData::GetNodeLocs () const { return node_locs; }
+const std::unordered_map<uint64_t, std::vector<PointLL> > validator_stats::RouletteData::GetWayShapes () const { return way_shapes; }
+const std::set<uint64_t> validator_stats::RouletteData::GetWays () const { return way_IDs; }
+
+void validator_stats::RouletteData::Add (const RouletteData& rd) {
+  const auto new_ids = rd.GetWays();
+  const auto new_shapes = rd.GetWayShapes();
+  const auto new_nodes = rd.GetNodeLocs();
+  for (auto& id : new_ids) {
+    AddTask(new_nodes.at(id), id, new_shapes.at(id));
+  }
+}
+
+void validator_stats::RouletteData::GenerateTasks () {
+  bool write_comma = false;
+  std::string json_str = "";
+  json_str += "[";
+  for (auto& id : way_IDs) {
+    if (write_comma)
+      json_str += ",";
+    json_str += "{\"geometries\": {\"features\": [";
+    json_str += "{\"geometry\": {\"coordinates\": ["
+              + std::to_string(node_locs.at(id).lng()) + "," + std::to_string(node_locs.at(id).lat())
+              + "],\"type\": \"Point\"},\"id\": null,\"properties\": {},\"type\": \"Feature\"},";
+    json_str += "{\"geometry\": {\"coordinates\": [ ";
+    bool coord_comma = false;
+    for (auto& p : way_shapes.at(id)){
+      if (coord_comma)
+        json_str += ",";
+      json_str += "[" + std::to_string(p.lng()) + "," + std::to_string(p.lat()) + "]";
+      coord_comma = true;
+    }
+    json_str += " ],\"type\": \"Linestring\" },\"id\": null,\"properties\": {\"osmid\": " + std::to_string(id) + "},\"type\": \"Feature\"}";
+    json_str += "],\"type\": \"FeatureCollection\"},";
+    json_str += "\"identifier\": \"" + std::to_string(id) + "\",";
+    json_str += "\"instruction\": \"Check to see if the one way road is logical\"}";
+    write_comma = true;
+  }
+  json_str += "]";
+  std::ofstream file;
+  file.open("/data/valhalla/tasks.json");
+  file << json_str << std::endl;
+  file.close();
+  LOG_INFO("MapRoulette tasks saved to /data/valhalla/tasks.json");
 }
 }
 }

@@ -18,6 +18,8 @@
 #include <future>
 #include <mutex>
 #include <numeric>
+#include <set>
+#include <unordered_map>
 
 #include <valhalla/midgard/logging.h>
 #include <valhalla/midgard/pointll.h>
@@ -32,6 +34,8 @@ using namespace valhalla::baldr;
 using namespace valhalla::mjolnir;
 
 namespace {
+
+
 
 // Get the GraphId of the opposing edge.
 uint32_t GetOpposingEdgeIndex(const GraphId& startnode, DirectedEdge& edge,
@@ -110,8 +114,8 @@ bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& 
                 const GraphId& startnode,
                 NodeInfoBuilder& startnodeinfo,
                 DirectedEdgeBuilder& directededge,
+                validator_stats::RouletteData& rd,
                 const uint32_t idx) {
-  std::vector<uint64_t> ids;
 
   bool is_terminal = true;
   lock.lock();
@@ -138,6 +142,10 @@ bool IsTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mutex& 
   if (is_terminal) {
     if (startnodeinfo.edge_count() > 1)
       std::cout <<  "Oneway with all pedstrian edges:  Origin or Destination not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
+      rd.AddTask(startnodeinfo.latlng(),
+                 tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid(),
+                 tilebuilder.edgeinfo(directededge.edgeinfo_offset())->shape());
+
     //else  std::cout <<  "Oneway with no connecting edges:  Dest not allowed." << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
   }
 
@@ -253,7 +261,7 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
             // Check if one way
             if ((!fward || !bward) && (fward || bward)) {
 
-              IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,directededge,j);
+              IsTerminal(tilebuilder, graph_reader, lock, node, nodeinfo, directededge, vStats.roulette_data, j);
 
               vStats.add_tile_one_way(tileid, rclass, tempLength);
               vStats.add_country_one_way(begin_node_iso, rclass, tempLength);
@@ -306,7 +314,6 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
       // Add possible duplicates to return class
       vStats.add_dup(dupcount, level);
     }
-
     // Fill promise with statistics
     result.set_value(vStats);
   }
@@ -394,6 +401,7 @@ namespace mjolnir {
                " max = " + std::to_string(max_density));
     }
     stats.build_db(pt);
+    stats.roulette_data.GenerateTasks();
   }
 }
 }
