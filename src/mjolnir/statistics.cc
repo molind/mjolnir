@@ -628,8 +628,11 @@ void validator_stats::RouletteData::GenerateTasks () {
     write_comma = true;
   }
   json_str += "]";
+  std::string file_str = "/data/valhalla/tasks.json";
+  if (boost::filesystem::exists(file_str))
+      boost::filesystem::remove(file_str);
   std::ofstream file;
-  file.open("/data/valhalla/tasks.json");
+  file.open(file_str);
   file << json_str << std::endl;
   file.close();
   LOG_INFO("MapRoulette tasks saved to /data/valhalla/tasks.json");
