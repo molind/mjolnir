@@ -589,14 +589,10 @@ void validator_stats::RouletteData::AddTask (const PointLL& p, const uint64_t id
     way_shapes.insert({id, shape});
 }
 
-const std::unordered_map<uint64_t, PointLL> validator_stats::RouletteData::GetNodeLocs () const { return node_locs; }
-const std::unordered_map<uint64_t, std::vector<PointLL> > validator_stats::RouletteData::GetWayShapes () const { return way_shapes; }
-const std::set<uint64_t> validator_stats::RouletteData::GetWays () const { return way_IDs; }
-
 void validator_stats::RouletteData::Add (const RouletteData& rd) {
-  const auto new_ids = rd.GetWays();
-  const auto new_shapes = rd.GetWayShapes();
-  const auto new_nodes = rd.GetNodeLocs();
+  const auto new_ids = rd.way_IDs;
+  const auto new_shapes = rd.way_shapes;
+  const auto new_nodes = rd.node_locs;
   for (auto& id : new_ids) {
     AddTask(new_nodes.at(id), id, new_shapes.at(id));
   }

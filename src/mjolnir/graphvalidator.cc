@@ -139,11 +139,9 @@ bool IsPedestrianTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, st
 
   if (is_terminal) {
     if (startnodeinfo.edge_count() > 1) {
-      //std::cout <<  "Oneway with all pedstrian edges:  Origin or Destination not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
       rd.AddTask(startnodeinfo.latlng(),
                  tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid(),
                  tilebuilder.edgeinfo(directededge.edgeinfo_offset())->shape());      
-      //else  std::cout <<  "Oneway with no connecting edges:  Dest not allowed.  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
       return true;
     }
   }
@@ -178,7 +176,6 @@ bool IsLoopTerminal(GraphTileBuilder &tilebuilder, GraphReader& reader, std::mut
   }
 
   if ((outbound >= 2 && inbound == 0) || (inbound >= 2 && outbound == 0)) {
-    //std::cout <<  "Loop  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
     rd.AddTask(startnodeinfo.latlng(),
                tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid(),
                tilebuilder.edgeinfo(directededge.edgeinfo_offset())->shape());
@@ -233,7 +230,6 @@ bool IsReversedOneway(GraphTileBuilder &tilebuilder, GraphReader& reader, std::m
     }
 
     if (!outbound && inbound) {
-      //std::cout <<  "ReversedOneway  " << tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid() << std::endl;
       rd.AddTask(startnodeinfo.latlng(),
                  tilebuilder.edgeinfo(directededge.edgeinfo_offset())->wayid(),
                  tilebuilder.edgeinfo(directededge.edgeinfo_offset())->shape());
@@ -342,10 +338,6 @@ void validate(const boost::property_tree::ptree& hierarchy_properties,
 
           // Only consider edge if edge is good and it's not a link
           if (validLength && !directededge.link()) {
-
-            //if (!(directededge.reverseaccess() & kAutoAccess) &&
-            //    !(directededge.forwardaccess() & kAutoAccess))
-            //IsTerminal(tilebuilder,graph_reader,lock,node,nodeinfo,idx);
 
             auto rclass = directededge.classification();
             tempLength /= (tileid == directededge.endnode().tileid()) ? 2 : 4;

@@ -1,7 +1,6 @@
 #ifndef VALHALLA_MJOLNIR_STATISTICS_H_
 #define VALHALLA_MJOLNIR_STATISTICS_H_
 
-#include <set>
 #include <string>
 #include <vector>
 #include <map>
@@ -141,21 +140,14 @@ public:
 
   void build_db(const boost::property_tree::ptree& pt);
 
-  class RouletteData {
+  struct RouletteData {
     std::unordered_map<uint64_t, PointLL> node_locs;
     std::unordered_map<uint64_t, std::vector<PointLL> > way_shapes;
-    std::set<uint64_t> way_IDs;
+    std::unordered_set<uint64_t> way_IDs;
 
-  public:
     RouletteData ();
 
     void AddTask (const PointLL& p, const uint64_t id, const std::vector<PointLL>& shape);
-
-    const std::unordered_map<uint64_t, PointLL> GetNodeLocs () const;
-
-    const std::unordered_map<uint64_t, std::vector<PointLL> > GetWayShapes () const;
-
-    const std::set<uint64_t> GetWays () const;
 
     void Add (const RouletteData& rd);
 
