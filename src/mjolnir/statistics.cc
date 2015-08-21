@@ -183,6 +183,8 @@ void validator_stats::add (const validator_stats& stats) {
   roulette_data.Add(stats.roulette_data);
 }
 
+
+//TODO: split this into separate methods!
 void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   // Get the location of the db file to write
   std::string dir = pt.get<std::string>("mjolnir.statistics.statistics_dir");
@@ -193,7 +195,6 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     boost::filesystem::remove(database);
   }
 
-	//spatialite_initialize();
   spatialite_init(0);
 
   sqlite3 *db_handle;
@@ -220,6 +221,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     return;
   }
   LOG_INFO("SpatiaLite loaded as an extension");
+  LOG_INFO("Writing statistics database");
 
   // Turn on foreign keys
   sql = "PRAGMA foreign_keys = ON";
@@ -236,13 +238,13 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   sql += "tilearea REAL,";
   sql += "totalroadlen REAL,";
   sql += "motorway REAL,";
-  sql += "trunk REAL,";
   sql += "pmary REAL,";
-  sql += "secondary REAL,";
-  sql += "tertiary REAL,";
-  sql += "unclassified REAL,";
   sql += "residential REAL,";
-  sql += "serviceother REAL";
+  sql += "secondary REAL,";
+  sql += "serviceother REAL,";
+  sql += "tertiary REAL,";
+  sql += "trunk REAL,";
+  sql += "unclassified REAL";
   sql += ")";
   ret = sqlite3_exec(db_handle, sql.c_str(), NULL, NULL, &err_msg);
   if (ret != SQLITE_OK) {
@@ -283,13 +285,13 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   sql = "CREATE TABLE countrydata (";
   sql += "isocode TEXT PRIMARY KEY,";
   sql += "motorway REAL,";
-  sql += "trunk REAL,";
   sql += "pmary REAL,";
-  sql += "secondary REAL,";
-  sql += "tertiary REAL,";
-  sql += "unclassified REAL,";
   sql += "residential REAL,";
-  sql += "serviceother REAL";
+  sql += "secondary REAL,";
+  sql += "serviceother REAL,";
+  sql += "tertiary REAL,";
+  sql += "trunk REAL,";
+  sql += "unclassified REAL";
   sql += ")";
   ret = sqlite3_exec(db_handle, sql.c_str(), NULL, NULL, &err_msg);
   if (ret != SQLITE_OK) {
@@ -325,7 +327,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     sqlite3_close(db_handle);
     return;
   }
-  sql = "INSERT INTO tiledata (tileid, tilearea, totalroadlen, motorway, trunk, pmary, secondary, tertiary, unclassified, residential, serviceother, geom) ";
+  sql = "INSERT INTO tiledata (tileid, tilearea, totalroadlen, motorway, pmary, residential, secondary, serviceother, tertiary, trunk, unclassified, geom) ";
   sql += "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 4326))";
   ret = sqlite3_prepare_v2(db_handle, sql.c_str(), strlen (sql.c_str()), &stmt, NULL);
   if (ret != SQLITE_OK) {
@@ -339,7 +341,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   for (auto tileid : tile_ids) {
     uint8_t index = 1;
     sqlite3_reset(stmt);
-    sqlite3_clear_bindings;
+    sqlite3_clear_bindings(stmt);
     // Tile ID
     sqlite3_bind_int(stmt, index, tileid);
     ++index;
@@ -414,7 +416,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     for (auto rclass : rclasses) {
       uint8_t index = 1;
       sqlite3_reset(stmt);
-      sqlite3_clear_bindings;
+      sqlite3_clear_bindings(stmt);
       // Tile ID (parent tile)
       sqlite3_bind_int(stmt, index, tileid);
       ++index;
@@ -457,7 +459,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     sqlite3_close(db_handle);
     return;
   }
-  sql = "INSERT INTO countrydata (isocode, motorway, trunk, pmary, secondary, tertiary, unclassified, residential, serviceother) ";
+  sql = "INSERT INTO countrydata (isocode, motorway, pmary, residential, secondary, serviceother, tertiary, trunk, unclassified) ";
   sql += "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
   ret = sqlite3_prepare_v2(db_handle, sql.c_str(), sql.length(), &stmt, NULL);
   if (ret != SQLITE_OK) {
@@ -471,7 +473,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
   for (auto country : iso_codes) {
     uint8_t index = 1;
     sqlite3_reset(stmt);
-    sqlite3_clear_bindings;
+    sqlite3_clear_bindings(stmt);
     // Country ISO
     sqlite3_bind_text(stmt, index, country.c_str(), country.length(), SQLITE_STATIC);
     ++index;
@@ -520,7 +522,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     for (auto rclass : rclasses) {
       uint8_t index = 1;
       sqlite3_reset(stmt);
-      sqlite3_clear_bindings;
+      sqlite3_clear_bindings(stmt);
       // ISO (parent ID)
       sqlite3_bind_text(stmt, index, country.c_str(), country.length(), SQLITE_STATIC);
       ++index;
@@ -564,7 +566,6 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     sqlite3_close (db_handle);
     return;
   }
-  LOG_INFO("Created spatial index");
 
   sql = "VACUUM ANALYZE";
   ret = sqlite3_exec (db_handle, sql.c_str(), NULL, NULL, &err_msg);
@@ -575,8 +576,7 @@ void validator_stats::build_db(const boost::property_tree::ptree& pt) {
     return;
   }
   sqlite3_close(db_handle);
-	//spatialite_shutdown();
-  LOG_INFO("Done writing statistics DB.");
+  LOG_INFO("Finished");
 }
 
 validator_stats::RouletteData::RouletteData ()
