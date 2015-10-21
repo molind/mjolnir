@@ -772,6 +772,9 @@ void GraphBuilder::Build(const boost::property_tree::ptree& pt, const OSMData& o
   );
 
   // Line up the nodes and then re-map the edges that the edges to them
+  // Note: we use an ordered map because the offset in the file will then
+  // also be in order which means each thread does less jumping around in
+  // the large file
   auto tiles = SortGraph(nodes_file, edges_file, tile_hierarchy, level);
 
   // Reclassify links (ramps). Cannot do this when building tiles since the
