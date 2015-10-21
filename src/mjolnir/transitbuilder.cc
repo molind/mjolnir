@@ -132,6 +132,7 @@ void WriteStops(sequence<Stop>& stops, const std::string& transit_tile, const Gr
   GraphTileBuilder tb(hierarchy, graph_tile_id, true);
   auto aabb = hierarchy.levels().rbegin()->second.tiles.TileBounds(graph_tile_id.tileid());
 
+  uint64_t idx = 0;
   // For each stop
   for (const auto& s : pt.get_child("stops")){
     // Get the coordinates of the stop as transit land has a BoundBox bug
@@ -169,7 +170,8 @@ void WriteStops(sequence<Stop>& stops, const std::string& transit_tile, const Gr
     //TODO: get these from transitland????
     stop.type = 0;
     stop.parent = 0;
-
+    stop.graphid = graph_tile_id;
+    stop.graphid.fields.id = tb.nodes().size() + idx++;
     // Add the stop to the list
     stops.push_back(stop);
   }
@@ -358,7 +360,10 @@ std::unordered_map<uint32_t, uint32_t> AddRoutes(const std::string& file,
         continue;
       }
 
-      std::string tl_routeid = routes.second.get<std::string>("onestop_id", "");
+      std::string onestop_id = routes.second.get<std::string>("onestop_id", "");
+      std::string operated_by_onestop_id = routes.second.get<std::string>("operated_by_onestop_id", "");
+      std::string operated_by_name = routes.second.get<std::string>("operated_by_name", "");
+
       std::string shortname = routes.second.get<std::string>("name", "");
       std::string longname = routes.second.get<std::string>("tags.route_long_name", "");
       std::string desc = routes.second.get<std::string>("tags.route_desc", "");
@@ -399,7 +404,10 @@ std::unordered_map<uint32_t, uint32_t> AddRoutes(const std::string& file,
 
       // Add names and create the transit route
       // Remove agency?
-      TransitRoute route(routeid, tl_routeid.c_str(),
+      TransitRoute route(routeid,
+                         tilebuilder.AddName(onestop_id == "null" ? "" : onestop_id),
+                         tilebuilder.AddName(operated_by_onestop_id == "null" ? "" : operated_by_onestop_id),
+                         tilebuilder.AddName(operated_by_name == "null" ? "" : operated_by_name),
                          strtol(route_color.c_str(), NULL, 16),
                          strtol(route_text_color.c_str(), NULL, 16),
                          tilebuilder.AddName(shortname == "null" ? "" : shortname),
@@ -919,8 +927,9 @@ void build(const std::string& stops_file, const std::string& transit_dir,
     if(reader.OverCommitted())
       reader.Clear();
     GraphId tile_id = tile_start->first.Tile_Base();
-    const GraphTile* tile = reader.GetGraphTile(tile_id);
 
+    lock.lock();
+    const GraphTile* tile = reader.GetGraphTile(tile_id);
     // Read in the existing tile - deserialize it so we can add to it
     GraphTileBuilder tilebuilder(hierarchy, tile_id, true);
     lock.unlock();
@@ -1033,7 +1042,7 @@ void build(const std::string& stops_file, const std::string& transit_dir,
       // Store stop information in TransitStops
       uint32_t farezone = 0;
       //TODO: use onestop id offset instead of fixed size string
-      TransitStop ts(stop.key, ""/*stop.onestop_id_offset*/, stop.name_offset, stop.desc_offset, stop.parent, farezone);
+      TransitStop ts(stop.key, stop.onestop_id_offset, stop.name_offset, stop.desc_offset, stop.parent, farezone);
       tilebuilder.AddTransitStop(ts);
 
       // Add to stop edge map - track edges that need to be added. This is
