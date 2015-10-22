@@ -610,7 +610,6 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
            connection_edges[added_edges].osm_node.id() == nodeid) {
       DirectedEdgeBuilder directededge;
       const OSMConnectionEdge& conn = connection_edges[added_edges];
-      Stop stop = *stops[stop_indexes.find(conn.stop_key)->second];
       directededge.set_endnode(conn.stop_node);
       directededge.set_length(conn.length);
       directededge.set_use(Use::kTransitConnection);
@@ -653,7 +652,7 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
   for (const auto& stop_edges : stop_edge_map) {
     // Get the stop information
     auto stopkey = stop_edges.second.stop_key;
-    Stop stop = *stops[stop_indexes.find(stopkey)->second];
+    const Stop stop = *stops[stop_indexes.find(stopkey)->second];
     if (stop.key != stopkey) {
       LOG_ERROR("Stop key not equal!");
     }
@@ -712,7 +711,7 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
     // Add any intra-station connections
     for (const auto& endstopkey : stop_edges.second.intrastation) {
       DirectedEdgeBuilder directededge;
-      Stop endstop = *stops[stop_indexes.find(endstopkey)->second];
+      const Stop endstop = *stops[stop_indexes.find(endstopkey)->second];
       if (endstopkey != endstop.key) {
         LOG_ERROR("End stop key not equal");
       }
@@ -749,7 +748,7 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
     // Add transit lines
     for (const auto& transitedge : stop_edges.second.lines) {
       // Get the end stop of the connection
-      Stop endstop = *stops[stop_indexes.find(transitedge.stopid)->second];
+      const Stop endstop = *stops[stop_indexes.find(transitedge.stopid)->second];
 
       // Set Use based on route type...
       Use use = GetTransitUse(route_types.find(transitedge.routeid)->second);
@@ -1104,7 +1103,11 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
   for(; transit_file_itr != end_file_itr; ++transit_file_itr) {
     if(boost::filesystem::is_regular(transit_file_itr->path()) && transit_file_itr->path().extension() == ".json") {
       auto graph_id = TransitToTile(pt, transit_file_itr->path().string());
-      transit_tiles.emplace(graph_id, transit_file_itr->path().string());
+      //TODO: this precludes a transit only network, which kind of sucks but
+      //right now we are assuming that we have to connect stops to the OSM
+      //road network so if that assumption goes away this can too
+      if(GraphReader::DoesTileExist(hierarchy, graph_id))
+        transit_tiles.emplace(graph_id, transit_file_itr->path().string());
     }
   }
   if(!transit_tiles.size()) {
