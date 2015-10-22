@@ -947,7 +947,7 @@ void build(const std::string& stops_file, const std::string& transit_dir,
     Stop stop;
     std::unordered_map<uint32_t, size_t> stop_indexes;
     std::unordered_multimap<uint32_t, size_t> children;
-    while (stop_itr != stops.end() && (stop = *stop_itr).graphid.Tile_Base() != tile_id) {
+    while (stop_itr != stops.end() && (stop = *stop_itr).graphid.Tile_Base() == tile_id) {
       // Add connections to the OSM network
       if (stop.parent == 0) {
         //TODO: multiple threads writing into the stops at once but never the same one, right?
@@ -984,7 +984,7 @@ void build(const std::string& stops_file, const std::string& transit_dir,
     LOG_DEBUG("Got " + std::to_string(departures.size()) + " departures.");
 
     stop_itr = stops[tile_start->second];
-    while (stop_itr != stops.end() && (stop = *stop_itr).graphid.Tile_Base() != tile_id) {
+    while (stop_itr != stops.end() && (stop = *stop_itr).graphid.Tile_Base() == tile_id) {
       StopEdges stopedges;
       stopedges.stop_key = stop.key;
 
