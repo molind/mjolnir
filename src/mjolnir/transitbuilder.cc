@@ -1098,7 +1098,9 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
   // Also bail if nothing inside
   transit_dir->push_back('/');
   std::map<GraphId, std::string> transit_tiles;
-  boost::filesystem::recursive_directory_iterator transit_file_itr(*transit_dir), end_file_itr;
+  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  auto local_level = hierarchy.levels().rbegin()->first;
+  boost::filesystem::recursive_directory_iterator transit_file_itr(*transit_dir + std::to_string(local_level) + "/"), end_file_itr;
   for(; transit_file_itr != end_file_itr; ++transit_file_itr) {
     if(boost::filesystem::is_regular(transit_file_itr->path()) && transit_file_itr->path().extension() == ".json") {
       auto graph_id = TransitToTile(pt, transit_file_itr->path().string());
@@ -1116,7 +1118,6 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
     LOG_INFO("Assign GraphIds to each transit stop...");
     sequence<Stop> stops("transit.bin", true);
     auto tile_dir = pt.get<std::string>("mjolnir.hierarchy.tile_dir");
-    TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
     for(const auto& transit_tile : transit_tiles) {
       tiles.emplace(transit_tile.first, stops.size());
       WriteStops(stops, transit_tile.second, transit_tile.first, hierarchy, DateTime::get_tz_db().regions);
