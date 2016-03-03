@@ -121,7 +121,7 @@ struct weighted_tile_t { GraphId t; size_t w; bool operator<(const weighted_tile
 std::priority_queue<weighted_tile_t> which_tiles(const ptree& pt) {
   //now real need to catch exceptions since we can't really proceed without this stuff
   LOG_INFO("Fetching transit feeds");
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(pt.get<std::string>("mjolnir.tile_dir"));
   std::set<GraphId> tiles;
   const auto& tile_level = hierarchy.levels().rbegin()->second;
   curler_t curler;
@@ -237,7 +237,7 @@ void get_routes(Transit& tile, std::unordered_map<std::string, uint64_t>& routes
       type = Transit_VehicleType::Transit_VehicleType_kMetro;
     else if (vehicle_type == "rail")
       type = Transit_VehicleType::Transit_VehicleType_kRail;
-    else if (vehicle_type == "bus")
+    else if (vehicle_type == "bus" || vehicle_type == "trolleybus_service" )
       type = Transit_VehicleType::Transit_VehicleType_kBus;
     else if (vehicle_type == "ferry")
       type = Transit_VehicleType::Transit_VehicleType_kFerry;
@@ -466,7 +466,7 @@ void write_pbf(const Transit& tile, const boost::filesystem::path& transit_tile)
 }
 
 void fetch_tiles(const ptree& pt, std::priority_queue<weighted_tile_t>& queue, unique_transit_t& uniques, std::promise<std::list<GraphId> >& promise) {
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(pt.get<std::string>("mjolnir.tile_dir"));
   const auto& tiles = hierarchy.levels().rbegin()->second.tiles;
   std::list<GraphId> dangling;
   curler_t curler;
@@ -491,6 +491,9 @@ void fetch_tiles(const ptree& pt, std::priority_queue<weighted_tile_t>& queue, u
     AABB2<PointLL> bbox(filter.minx(), min_y, filter.maxx(), max_y);
     ptree response;
     auto api_key = pt.get_optional<std::string>("api_key") ? "&api_key=" + pt.get<std::string>("api_key") : "";
+    auto import_level = pt.get_optional<std::string>("import_level") ? "&import_level=" +
+        pt.get<std::string>("import_level") : "";
+
     Transit tile;
     auto file_name = GraphTile::FileSuffix(current, hierarchy);
     file_name = file_name.substr(0, file_name.size() - 3) + "pbf";
@@ -572,6 +575,7 @@ void fetch_tiles(const ptree& pt, std::priority_queue<weighted_tile_t>& queue, u
     for(const auto& stop : stops) {
       request = url((boost::format("/api/v1/schedule_stop_pairs?total=false&per_page=%1%&origin_onestop_id=%2%&service_from_date=%3%-%4%-%5%")
         % pt.get<std::string>("per_page") % stop.first % utc->tm_year % utc->tm_mon % utc->tm_mday).str(), pt);
+      request = *request + import_level;
       do {
         //grab some stuff
         response = curler(*request, "schedule_stop_pairs");
@@ -632,12 +636,12 @@ std::list<GraphId> fetch(const ptree& pt, std::priority_queue<weighted_tile_t>& 
 }
 
 GraphId id(const boost::property_tree::ptree& pt, const std::string& transit_tile) {
-  auto tile_dir = pt.get<std::string>("mjolnir.hierarchy.tile_dir");
+  auto tile_dir = pt.get<std::string>("mjolnir.tile_dir");
   auto transit_dir = pt.get<std::string>("mjolnir.transit_dir");
   auto graph_tile = tile_dir + transit_tile.substr(transit_dir.size());
   boost::algorithm::trim_if(graph_tile, boost::is_any_of(".pbf"));
   graph_tile += ".gph";
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(tile_dir);
   return GraphTile::GetTileId(graph_tile, hierarchy);
 }
 
@@ -676,7 +680,7 @@ struct dist_sort_t {
 };
 
 void stitch_tiles(const ptree& pt, const std::unordered_set<GraphId>& all_tiles, std::list<GraphId>& tiles, std::mutex& lock) {
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(pt.get<std::string>("mjolnir.tile_dir"));
   auto grid = hierarchy.levels().rbegin()->second.tiles;
   auto tile_name = [&hierarchy, &pt](const GraphId& id){
     auto file_name = GraphTile::FileSuffix(id, hierarchy);
@@ -800,6 +804,7 @@ int main(int argc, char** argv) {
   pt.erase("per_page"); pt.add("per_page", argc > 3 ? std::string(argv[3]) : std::to_string(1000));
   if(argc > 4) { pt.get_child("mjolnir").erase("transit_dir"); pt.add("mjolnir.transit_dir", std::string(argv[4])); }
   if(argc > 5) { pt.erase("api_key"); pt.add("api_key", std::string(argv[5])); }
+  if(argc > 6) { pt.erase("import_level"); pt.add("import_level", std::string(argv[6])); }
 
   //yes we want to curl
   curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -812,7 +817,7 @@ int main(int argc, char** argv) {
   curl_global_cleanup();
 
   //figure out which transit tiles even exist
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(pt.get<std::string>("mjolnir.tile_dir"));
   boost::filesystem::recursive_directory_iterator transit_file_itr(pt.get<std::string>("mjolnir.transit_dir") + '/' +
                                                                    std::to_string(hierarchy.levels().rbegin()->first));
   boost::filesystem::recursive_directory_iterator end_file_itr;

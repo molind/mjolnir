@@ -330,11 +330,13 @@ Use GetTransitUse(const uint32_t rt) {
   }
 }
 
-std::list<PointLL> GetShape(const PointLL& stop_ll, const PointLL& endstop_ll,
+std::list<PointLL> GetShape(const PointLL& stop_ll, const PointLL& endstop_ll, uint32_t shapeid,
                             const float orig_dist_traveled, const float dest_dist_traveled,
                             const std::vector<PointLL>& trip_shape, const std::vector<float>& distances) {
+
   std::list<PointLL> shape;
-  if (trip_shape.size() && stop_ll != endstop_ll) {
+  if (shapeid != 0 && trip_shape.size() && stop_ll != endstop_ll &&
+      orig_dist_traveled < dest_dist_traveled) {
 
     float distance = 0.0f, d_from_p0_to_x = 0.0f;
 
@@ -343,9 +345,9 @@ std::list<PointLL> GetShape(const PointLL& stop_ll, const PointLL& endstop_ll,
     bool found = false;
 
     // find out where orig_dist_traveled should be in the list.
-    auto lower_bound = std::lower_bound(distances.begin(), distances.end(), orig_dist_traveled);
+    auto lower_bound = std::lower_bound(distances.cbegin(), distances.cend(), orig_dist_traveled);
     // find out where dest_dist_traveled should be in the list.
-    auto upper_bound = std::upper_bound(distances.begin(), distances.end(), dest_dist_traveled);
+    auto upper_bound = std::upper_bound(distances.cbegin(), distances.cend(), dest_dist_traveled);
     float prev_distance = *(lower_bound);
 
     // lower_bound returns an iterator pointing to the first element which does not compare less than the dist_traveled;
@@ -372,7 +374,7 @@ std::list<PointLL> GetShape(const PointLL& stop_ll, const PointLL& endstop_ll,
        */
 
       // index into our vector of points
-      uint32_t index = (itr - distances.begin());
+      uint32_t index = (itr - distances.cbegin());
       PointLL p0 = trip_shape[index];
       PointLL p1 = trip_shape[index + 1];
 
@@ -407,7 +409,6 @@ std::list<PointLL> GetShape(const PointLL& stop_ll, const PointLL& endstop_ll,
     shape.push_back(stop_ll);
     shape.push_back(endstop_ll);
   }
-
   return shape;
 }
 
@@ -749,13 +750,13 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
         const auto& shape_d = found->second;
         points = shape_d.shape;
         // copy only the distances that we care about.
-        std::copy(distances.begin()+shape_d.begins,
-                  distances.begin()+shape_d.ends,back_inserter(distance));
+        std::copy((distances.cbegin()+shape_d.begins),
+                  (distances.cbegin()+shape_d.ends),back_inserter(distance));
       }
       else if (transitedge.shapeid != 0)
         LOG_WARN("Shape Id not found: " + std::to_string(transitedge.shapeid));
 
-      auto shape = GetShape(stopll, endll, transitedge.orig_dist_traveled,
+      auto shape = GetShape(stopll, endll, transitedge.shapeid, transitedge.orig_dist_traveled,
                             transitedge.dest_dist_traveled, points, distance);
       uint32_t edge_info_offset = tilebuilder.AddEdgeInfo(transitedge.routeid,
            origin_node, endnode, 0, shape, names, added);
@@ -800,6 +801,8 @@ void AddToGraph(GraphTileBuilder& tilebuilder,
 // Add connection edges from the transit stop to an OSM edge
 void AddOSMConnection(const Transit_Stop& stop, const GraphTile* tile,
                       const TileHierarchy& tilehierarchy,
+                      GraphReader& reader,
+                      std::mutex& lock,
                       std::vector<OSMConnectionEdge>& connection_edges) {
   PointLL stop_ll = {stop.lon(), stop.lat() };
   uint64_t wayid = stop.osm_way_id();
@@ -816,6 +819,52 @@ void AddOSMConnection(const Transit_Stop& stop, const GraphTile* tile,
       auto edgeinfo = tile->edgeinfo(directededge->edgeinfo_offset());
 
       if (edgeinfo->wayid() == wayid) {
+
+        // this is a temp hack until we have some time to have loki return multiple, ranked results.
+        // if the assigned wayid is a ferry, try to find a pedestrian edge instead.
+        // use the distance to the nodes to determine who is closer and where to look for pedestrian edges
+        if (directededge->use() == Use::kFerry || directededge->use() == Use::kRailFerry) {
+          float start_distance = node->latlng().Distance(stop_ll);
+
+          const DirectedEdge* opp_de = tile->directededge(node->edge_index() + directededge->opp_index());
+          GraphId end_node = opp_de->endnode();
+          float end_distance = 0.0f;
+
+          const GraphTile* endnode_tile = tile;
+          if ( directededge->endnode().Tile_Base() != end_node.Tile_Base()) {
+              // Get the end node tile
+              lock.lock();
+              endnode_tile = reader.GetGraphTile(end_node);
+              lock.unlock();
+          }
+
+          const NodeInfo* closest_node = endnode_tile->node(end_node.id());
+          end_distance = closest_node->latlng().Distance(stop_ll);
+          if (start_distance <= end_distance)
+            closest_node = node;
+
+          // loop until we hopefully find an edge with pedestrian access.
+          for (uint32_t x = 0, count = closest_node->edge_count(); x < count; x++) {
+            const DirectedEdge* de = endnode_tile->directededge(closest_node->edge_index() + x);
+            auto edge_info = endnode_tile->edgeinfo(de->edgeinfo_offset());
+
+            if (edge_info->wayid() != wayid && (de->forwardaccess() & kPedestrianAccess) &&
+                de->use() != Use::kFerry && de->use() != Use::kRailFerry) {
+              // update the wayid
+              wayid = edge_info->wayid();
+              break;
+            }
+          }
+          if (wayid != edgeinfo->wayid()) {
+            //restart the search process with the updated wayid.
+            i = 0;
+            mindist = 10000000.0f;
+            edgelength = 0;
+            startnode = GraphId{}, endnode = GraphId{};
+            closest_shape.clear();
+            break;
+          }
+        }
 
         // Get shape and find closest point
         auto this_shape = edgeinfo->shape();
@@ -974,7 +1023,7 @@ void build(const std::string& transit_dir,
 
       // Form connections to the stop
       // TODO - deal with hierarchy (only connect egress locations)
-      AddOSMConnection(stop, tile, hierarchy, connection_edges);
+      AddOSMConnection(stop, tile, hierarchy, reader, lock, connection_edges);
 
       // Store stop information in TransitStops
       tilebuilder.AddTransitStop( { tilebuilder.AddName(stop.onestop_id()),
@@ -995,9 +1044,10 @@ void build(const std::string& transit_dir,
 
       float distance = 0.0f;
       Shape shape_data;
-      shape_data.begins = distances.size();
       //first is always 0.0f.
       distances.push_back(distance);
+      shape_data.begins = distances.size()-1;
+
       // loop through the points getting the distances.
       for (size_t index = 0; index < trip_shape.size() - 1; ++index) {
         PointLL p0 = trip_shape[index];
@@ -1005,7 +1055,9 @@ void build(const std::string& transit_dir,
         distance += p0.Distance(p1);
         distances.push_back(distance);
       }
-      shape_data.ends = distances.size()-1;
+      //must be distances.size for the end index as we use std::copy later on and want
+      //to include the last element in the vector we wish to copy.
+      shape_data.ends = distances.size();
       shape_data.shape = trip_shape;
       //shape id --> begin and end indexes in the distance vector and vector of points.
       shapes[shape.shape_id()] = shape_data;
@@ -1112,12 +1164,12 @@ void build(const std::string& transit_dir,
 }
 
 GraphId TransitToTile(const boost::property_tree::ptree& pt, const std::string& transit_tile) {
-  auto tile_dir = pt.get<std::string>("mjolnir.hierarchy.tile_dir");
+  auto tile_dir = pt.get<std::string>("mjolnir.tile_dir");
   auto transit_dir = pt.get<std::string>("mjolnir.transit_dir");
   auto graph_tile = tile_dir + transit_tile.substr(transit_dir.size());
   boost::algorithm::trim_if(graph_tile, boost::is_any_of(".pbf"));
   graph_tile += ".gph";
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
+  TileHierarchy hierarchy(tile_dir);
   return GraphTile::GetTileId(graph_tile, hierarchy);
 }
 
@@ -1141,8 +1193,8 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
   // Also bail if nothing inside
   transit_dir->push_back('/');
   std::map<GraphId, std::string> transit_tiles;
-  TileHierarchy hierarchy(pt.get_child("mjolnir.hierarchy"));
-  GraphReader reader(pt.get_child("mjolnir.hierarchy"));
+  GraphReader reader(pt.get_child("mjolnir"));
+  const auto& hierarchy = reader.GetTileHierarchy();
   auto local_level = hierarchy.levels().rbegin()->first;
   if(boost::filesystem::is_directory(*transit_dir + std::to_string(local_level) + "/")) {
     boost::filesystem::recursive_directory_iterator transit_file_itr(*transit_dir + std::to_string(local_level) + "/"), end_file_itr;
@@ -1202,7 +1254,7 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
     // Make the thread
     results.emplace_back();
     threads[i].reset(
-      new std::thread(build, *transit_dir, std::cref(pt.get_child("mjolnir.hierarchy")),
+      new std::thread(build, *transit_dir, std::cref(pt.get_child("mjolnir")),
                       std::ref(lock), std::cref(tiles), tile_start, tile_end,
                       std::ref(results.back())));
   }
@@ -1227,7 +1279,7 @@ void TransitBuilder::Build(const boost::property_tree::ptree& pt) {
 
   auto t2 = std::chrono::high_resolution_clock::now();
   uint32_t secs = std::chrono::duration_cast<std::chrono::seconds>(t2 - t1).count();
-  LOG_INFO("Finished - TransitBuider took " + std::to_string(secs) + " secs");
+  LOG_INFO("Finished - TransitBuilder took " + std::to_string(secs) + " secs");
 }
 
 }

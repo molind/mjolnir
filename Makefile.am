@@ -8,16 +8,6 @@ LIBTOOL_DEPS = @LIBTOOL_DEPS@
 libtool: $(LIBTOOL_DEPS)
 	$(SHELL) ./config.status libtool
 
-#config files for tools, you can put a commit hash here if you are ahead of master
-CONF=master
-conf:
-	-wget -q -O conf-$(CONF).zip https://github.com/valhalla/conf/archive/$(CONF).zip
-	-unzip conf-$(CONF).zip
-	-rm -rf conf-$(CONF).zip conf
-	-mv conf-$(CONF) conf
-clean-conf:
-	-rm -rf conf
-
 # conditional test coverage
 if ENABLE_COVERAGE
 .PHONY: clean-coverage
@@ -42,21 +32,23 @@ coverage/index.html: coverage.info
 clean-gcno:
 	-find -name '*.gcno' -exec rm -rf {} \;
 
-clean-local: clean-coverage clean-gcno clean-conf
-else
-clean-local: clean-conf
+clean-local: clean-coverage clean-gcno
 endif
-
-#everybody needs confs
-src/mjolnir/*.cc: conf
 
 # proto generation etc
 PROTO_FILES = proto/osmformat.proto proto/fileformat.proto proto/transit.proto
-BUILT_SOURCES = $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES))
-CLEANFILES = $(patsubst %.proto,valhalla/%.pb.h,$(PROTO_FILES)) $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES))
-nodist_libvalhalla_mjolnir_la_SOURCES = $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES))
 src/proto/%.pb.cc: proto/%.proto
 	@echo " PROTOC $<"; mkdir -p src/proto valhalla/proto; @PROTOC_BIN@ -Iproto --cpp_out=valhalla/proto $< && mv valhalla/proto/$(@F) src/proto
+
+#lua code for parsing
+src/mjolnir/graph_lua_proc.h:
+	-xxd -i lua/graph.lua > src/mjolnir/graph_lua_proc.h
+src/mjolnir/admin_lua_proc.h:
+	-xxd -i lua/admin.lua > src/mjolnir/admin_lua_proc.h
+
+BUILT_SOURCES = $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES)) src/mjolnir/graph_lua_proc.h src/mjolnir/admin_lua_proc.h
+nodist_libvalhalla_mjolnir_la_SOURCES = $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES)) src/mjolnir/graph_lua_proc.h src/mjolnir/admin_lua_proc.h
+CLEANFILES = $(patsubst %.proto,valhalla/%.pb.h,$(PROTO_FILES)) $(patsubst %.proto,src/%.pb.cc,$(PROTO_FILES)) src/mjolnir/graph_lua_proc.h src/mjolnir/admin_lua_proc.h
 
 # lib valhalla compilation etc
 lib_LTLIBRARIES = libvalhalla_mjolnir.la
@@ -115,7 +107,9 @@ libvalhalla_mjolnir_la_SOURCES = \
 	src/mjolnir/pbfgraphparser.cc \
 	src/mjolnir/statistics.cc \
 	src/mjolnir/transitbuilder.cc \
-	src/mjolnir/util.cc
+	src/mjolnir/util.cc \
+	src/mjolnir/graph_lua_proc.h \
+	src/mjolnir/admin_lua_proc.h
 libvalhalla_mjolnir_la_CPPFLAGS = $(DEPS_CFLAGS) $(VALHALLA_CPPFLAGS) @BOOST_CPPFLAGS@
 libvalhalla_mjolnir_la_LIBADD = $(DEPS_LIBS) $(VALHALLA_LDFLAGS) @BOOST_LDFLAGS@ $(BOOST_PROGRAM_OPTIONS_LIB) $(BOOST_FILESYSTEM_LIB) $(BOOST_SYSTEM_LIB) $(BOOST_THREAD_LIB) @PROTOC_LIBS@ -lsqlite3 -lspatialite
 

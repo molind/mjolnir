@@ -101,22 +101,23 @@ struct enhancer_stats {
  * @param  density       Relative road density.
  */
 void UpdateSpeed(DirectedEdge& directededge, const uint32_t density) {
-  // Set speed on ramps / turn channels
+  // Update speed on ramps (if not a tagged speed) and turn channels
   if (directededge.link()) {
     uint32_t speed = directededge.speed();
     Use use = directededge.use();
     if (use == Use::kTurnChannel) {
       speed = static_cast<uint32_t>((speed * 1.25f) + 0.5f);
-    } else if (use == Use::kRamp) {
+    } else if (use == Use::kRamp &&
+               directededge.speed_type() != SpeedType::kTagged) {
       RoadClass rc = directededge.classification();
       if (rc == RoadClass::kMotorway) {
-        speed = 95;
+        speed = (density > 8) ? 89 : 95;
       } else if (rc == RoadClass::kTrunk) {
-        speed = 80;
+        speed = (density > 8) ? 73 : 80;
       } else if (rc == RoadClass::kPrimary) {
-        speed = 65;
+        speed = (density > 8) ? 57 : 65;
       } else if (rc == RoadClass::kSecondary) {
-        speed = 50;
+        speed = 49;
       } else if (rc == RoadClass::kTertiary) {
         speed = 40;
       } else if (rc == RoadClass::kUnclassified) {
@@ -163,13 +164,13 @@ void UpdateSpeed(DirectedEdge& directededge, const uint32_t density) {
     // assumed to be urban
     if (density > 8) {
       if (directededge.classification() == RoadClass::kMotorway) {
-        directededge.set_speed(90);  // 55MPH
+        directededge.set_speed(89);  // 55MPH
       } else if (directededge.classification() == RoadClass::kTrunk) {
-        directededge.set_speed(75);  // 45MPH
+        directededge.set_speed(73);  // 45MPH
       } else if (directededge.classification() == RoadClass::kPrimary) {
-        directededge.set_speed(60);  // 35MPH
+        directededge.set_speed(57);  // 35MPH
       } else if (directededge.classification() == RoadClass::kSecondary) {
-        directededge.set_speed(50);  // 30 MPH
+        directededge.set_speed(49);  // 30 MPH
       } else if (directededge.classification() == RoadClass::kTertiary) {
         directededge.set_speed(40);  // 25 MPH
       } else if (directededge.classification() == RoadClass::kResidential ||
@@ -336,6 +337,8 @@ bool IsNotThruEdge(GraphReader& reader, std::mutex& lock,
     const DirectedEdge* diredge = tile->directededge(nodeinfo->edge_index());
     for (uint32_t i = 0; i < nodeinfo->edge_count(); i++, diredge++) {
       // Do not allow use of the start edge or any transit edges
+      // TODO - seems to be an issue with transit routes if we skip
+      // transit connections. Investigate
       if ((n == 0 && diredge->endnode() == startnode) ||
           diredge->IsTransitLine()) {
         continue;
@@ -881,6 +884,7 @@ uint32_t GetStopImpact(uint32_t from, uint32_t to,
   ///////////////////////////////////////////////////////////////////////////
 
   // Get the highest classification of other roads at the intersection
+  bool allramps = true;
   const DirectedEdge* edge = &edges[0];
   // kUnclassified,  kResidential, and kServiceOther are grouped
   // together for the stop_impact logic.
@@ -898,6 +902,11 @@ uint32_t GetStopImpact(uint32_t from, uint32_t to,
       } else if (edge->classification() < bestrc) {
         bestrc = edge->classification();
       }
+    }
+
+    // Check if not a ramp or turn channel
+    if (!edge->link()) {
+      allramps = false;
     }
   }
 
@@ -920,9 +929,13 @@ uint32_t GetStopImpact(uint32_t from, uint32_t to,
 
   // TODO:Increase stop level based on classification of edges
 
-  // Reduce stop impact from a turn channel
-  if (edges[from].use() == Use::kTurnChannel) {
+  // Reduce stop impact from a turn channel or when only links
+  // (ramps and turn channels) are involved.
+  if (allramps || edges[from].use() == Use::kTurnChannel) {
     stop_impact /= 2;
+  } else if (edges[from].use() == Use::kRamp && edges[to].use() != Use::kRamp) {
+    // Increase stop impact on merge
+    stop_impact += 1;
   }
 
   // Clamp to kMaxStopImpact
@@ -1292,7 +1305,10 @@ void enhance(const boost::property_tree::ptree& pt,
         // nodes since the stop Id is stored in that field (union).
         if (!nodeinfo.is_transit()) {
           for (uint32_t k = (j + 1); k < ntrans; k++) {
-            if (ConsistentNames(country_code,
+            // Set name consistency to true when entering a link (ramp or
+            // turn channel) to avoid double penalizing.
+            if (directededge.link() ||
+                ConsistentNames(country_code,
                                 tilebuilder.edgeinfo(directededge.edgeinfo_offset())->GetNames(),
                                 tilebuilder.edgeinfo(tilebuilder.directededge(
                                     nodeinfo.edge_index() + k).edgeinfo_offset())->GetNames())) {
@@ -1303,6 +1319,7 @@ void enhance(const boost::property_tree::ptree& pt,
 
         // Set edge transitions and unreachable, not_thru, and internal
         // intersection flags. Do not do this for transit edges.
+        // TODO - investigate TransitConnection use
         if (!directededge.IsTransitLine()) {
           // Edge transitions.
           if (j < kNumberOfEdgeTransitions) {
@@ -1414,7 +1431,7 @@ void GraphEnhancer::Enhance(const boost::property_tree::ptree& pt) {
 
   // Create a randomized queue of tiles to work from
   std::deque<GraphId> tempqueue;
-  boost::property_tree::ptree hierarchy_properties = pt.get_child("mjolnir.hierarchy");
+  boost::property_tree::ptree hierarchy_properties = pt.get_child("mjolnir");
   GraphReader reader(hierarchy_properties);
   auto tile_hierarchy = reader.GetTileHierarchy();
   auto local_level = tile_hierarchy.levels().rbegin()->second.level;

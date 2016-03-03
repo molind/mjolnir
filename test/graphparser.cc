@@ -22,25 +22,7 @@ void write_config(const std::string& filename) {
     file.open(filename, std::ios_base::trunc);
     file << "{ \
       \"mjolnir\": { \
-        \"input\": { \
-          \"type\": \"protocolbuffer\" \
-        }, \
-        \"hierarchy\": { \
-          \"tile_dir\": \"test/tiles\", \
-          \"levels\": [ \
-            {\"name\": \"local\", \"level\": 2, \"size\": 0.25}, \
-            {\"name\": \"arterial\", \"level\": 1, \"size\": 1, \"importance_cutoff\": \"Tertiary\"}, \
-            {\"name\": \"highway\", \"level\": 0, \"size\": 4, \"importance_cutoff\": \"Trunk\"} \
-          ] \
-        }, \
-        \"tagtransform\": { \
-          \"node_script\": \"test/lua/vertices.lua\", \
-          \"node_function\": \"nodes_proc\", \
-          \"way_script\": \"test/lua/edges.lua\", \
-          \"way_function\": \"ways_proc\" , \
-          \"relation_script\": \"test/lua/edges.lua\", \
-          \"relation_function\": \"rels_proc\" \
-        } \
+      \"tile_dir\": \"test/tiles\" \
       } \
     }";
   }

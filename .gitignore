@@ -43,6 +43,8 @@ transit_stop_query
 .libs/
 conf/
 libvalhalla_mjolnir.la
+src/mjolnir/admin_lua_proc.h
+src/mjolnir/graph_lua_proc.h
 *.bin
 
 # tests
@@ -60,6 +62,7 @@ test/signinfo
 test/utrecht
 test/*.log
 test/*.trs
+test/tiles/bin/*
 EdgeInfoBuilder_TestWriteRead.gph
 AdminInfoBuilder_TestWriteRead.gph
 

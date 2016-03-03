@@ -3,6 +3,7 @@
 #include "mjolnir/osmpbfparser.h"
 #include "mjolnir/luatagtransform.h"
 #include "mjolnir/idtable.h"
+#include "graph_lua_proc.h"
 
 #include <future>
 #include <utility>
@@ -25,7 +26,7 @@ using namespace valhalla::mjolnir;
 namespace {
 
 // Will throw an error if this is exceeded. Then we can increase.
-constexpr uint64_t kMaxOSMNodeId = 4000000000;
+constexpr uint64_t kMaxOSMNodeId = 5000000000;
 
 // Absurd classification.
 constexpr uint32_t kAbsurdRoadClass = 777777;
@@ -38,16 +39,8 @@ struct graph_callback : public OSMPBF::Callback {
   virtual ~graph_callback() {}
 
   graph_callback(const boost::property_tree::ptree& pt, OSMData& osmdata) :
-    shape_(kMaxOSMNodeId), intersection_(kMaxOSMNodeId), tile_hierarchy_(pt.get_child("hierarchy")), osmdata_(osmdata){
-
-    // Initialize Lua based on config
-    lua_.SetLuaNodeScript(pt.get<std::string>("tagtransform.node_script"));
-    lua_.SetLuaNodeFunc(pt.get<std::string>("tagtransform.node_function"));
-    lua_.SetLuaWayScript(pt.get<std::string>("tagtransform.way_script"));
-    lua_.SetLuaWayFunc(pt.get<std::string>("tagtransform.way_function"));
-    lua_.SetLuaRelationScript(pt.get<std::string>("tagtransform.relation_script"));
-    lua_.SetLuaRelationFunc(pt.get<std::string>("tagtransform.relation_function"));
-    lua_.OpenLib();
+    shape_(kMaxOSMNodeId), intersection_(kMaxOSMNodeId), tile_hierarchy_(pt.get<std::string>("tile_dir")),
+    osmdata_(osmdata), lua_(std::string(lua_graph_lua, lua_graph_lua + lua_graph_lua_len)){
 
     current_way_node_index_ = last_node_ = last_way_ = last_relation_ = 0;
 
@@ -204,6 +197,17 @@ struct graph_callback : public OSMPBF::Callback {
     Tags results = lua_.Transform(OSMType::kWay, tags);
     if (results.size() == 0) {
       return;
+    }
+
+    // Check for ways that loop back on themselves (simple check) and add
+    // any wayids that have loops to a vector
+    if (nodes.size() > 2) {
+      for (size_t i = 2, j = 0; i < nodes.size(); i++, j++) {
+        if (nodes[i] == nodes[j]) {
+          loops_.push_back(osmid);
+          break;
+        }
+      }
     }
 
     //unsorted extracts are just plain nasty, so they can bugger off!
@@ -849,6 +853,18 @@ struct graph_callback : public OSMPBF::Callback {
     way_nodes_.reset(way_nodes);
   }
 
+  // Output list of wayids that have loops
+  void output_loops() {
+    std::ofstream loop_file;
+    loop_file.open("loop_ways.txt", std::ofstream::out | std::ofstream::trunc);
+    for (auto& wayid : loops_) {
+      loop_file << wayid << std::endl;
+    }
+    loop_file.close();
+    loops_.clear();
+    loops_.shrink_to_fit();
+  }
+
   // List of the tile levels to be created
   TileHierarchy tile_hierarchy_;
 
@@ -874,6 +890,9 @@ struct graph_callback : public OSMPBF::Callback {
   size_t current_way_node_index_;
   uint64_t last_node_, last_way_, last_relation_;
   std::unordered_map<uint64_t, size_t> loop_nodes_;
+
+  // List of wayids with loops
+  std::vector<uint64_t> loops_;
 };
 
 }
@@ -911,6 +930,7 @@ OSMData PBFGraphParser::Parse(const boost::property_tree::ptree& pt, const std::
     callback.current_way_node_index_ = callback.last_node_ = callback.last_way_ = callback.last_relation_ = 0;
     OSMPBF::Parser::parse(file_handle, OSMPBF::Interest::WAYS, callback);
   }
+  callback.output_loops();
   callback.reset(nullptr, nullptr);
   LOG_INFO("Finished with " + std::to_string(osmdata.osm_way_count) + " routable ways containing " + std::to_string(osmdata.osm_way_node_count) + " nodes");
 
